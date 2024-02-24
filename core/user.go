@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"runtime"
+	"strings"
 )
 
 type User struct {
@@ -15,7 +16,8 @@ type User struct {
 	quit chan struct{}
 }
 
-const WhoOnline string = "WhoOnline"
+const WhoOnline string = "WhoOnline" // 编译时直接替换
+const Rename string = "Rename"
 
 func NewUser(conn net.Conn) *User {
 	addr := conn.RemoteAddr().String()
@@ -76,6 +78,9 @@ func (this *User) LMRead(server *Server) {
 
 		if buf_str[0:len(WhoOnline)] == WhoOnline {
 			this.ReplyWhoOnline(server)
+		} else if buf_str[0:len(Rename)] == Rename && len(buf_str) > len(Rename)+1 {
+			name := strings.Replace(buf_str[len(Rename)+1:], "\n", "", -1)
+			this.ReplyRename(name, server)
 		} else {
 			server.BroadCast(this, buf_str[:n-1])
 		}
@@ -86,5 +91,18 @@ func (this *User) ReplyWhoOnline(server *Server) {
 	for _, user := range server.OnlineMap {
 		msg := user.Name
 		this.C <- msg
+	}
+}
+
+func (this *User) ReplyRename(name string, server *Server) {
+	_, ok := server.OnlineMap[name]
+	if ok {
+		this.C <- "当前用户被使用"
+	} else {
+		server.mapLock.Lock()
+		delete(server.OnlineMap, this.Name)
+		this.Name = name
+		server.OnlineMap[name] = this
+		server.mapLock.Unlock()
 	}
 }
