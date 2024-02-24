@@ -26,6 +26,7 @@ func NewServer(Ip string, Port int) *Server {
 	return s
 }
 
+// Start /*服务器运行循环
 func (this *Server) Start() {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", this.Ip, this.Port))
 	if err != nil {
@@ -34,34 +35,27 @@ func (this *Server) Start() {
 	}
 	defer listener.Close()
 
-	go this.ListenMessage()
-
+	go this.LMWriteAllUser()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			fmt.Println("listener.Accept err: ", err)
 			continue
 		}
-		go this.Handler(conn)
+		user := NewUser(conn)
+		user.Online(this)
 	}
 
 }
 
-func (this *Server) Handler(conn net.Conn) {
-	//fmt.Println("连接成功")
-	user := NewUser(conn)
-	this.mapLock.Lock()
-	this.OnlineMap[user.Name] = user
-	this.mapLock.Unlock()
-	this.BroadCast(user, "已上线")
-}
-
+// BroadCast /*广播函数，写入Message
 func (this *Server) BroadCast(user *User, msg string) {
 	msg = "[" + user.Addr + "]" + " " + user.Name + " " + msg
 	this.Message <- msg
 }
 
-func (this *Server) ListenMessage() {
+// LMWriteAllUser /*向所以用户发送消息
+func (this *Server) LMWriteAllUser() {
 	for {
 		msg := <-this.Message
 		this.mapLock.Lock()
