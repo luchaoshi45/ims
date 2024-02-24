@@ -15,6 +15,8 @@ type User struct {
 	quit chan struct{}
 }
 
+const WhoOnline string = "WhoOnline"
+
 func NewUser(conn net.Conn) *User {
 	addr := conn.RemoteAddr().String()
 	u := &User{addr, addr, make(chan string), conn, make(chan struct{})}
@@ -69,6 +71,20 @@ func (this *User) LMRead(server *Server) {
 		if err != nil && err != io.EOF {
 			fmt.Println("coon Read err ", err)
 		}
-		server.BroadCast(this, string(buf[:n-1]))
+
+		buf_str := string(buf)
+
+		if buf_str[0:len(WhoOnline)] == WhoOnline {
+			this.ReplyWhoOnline(server)
+		} else {
+			server.BroadCast(this, buf_str[:n-1])
+		}
+	}
+}
+
+func (this *User) ReplyWhoOnline(server *Server) {
+	for _, user := range server.OnlineMap {
+		msg := user.Name
+		this.C <- msg
 	}
 }
