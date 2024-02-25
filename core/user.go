@@ -19,9 +19,10 @@ type User struct {
 	cancel context.CancelFunc
 }
 
-const readTimeout = time.Duration(10 * time.Second) // 编译时直接替换
+const readTimeout = time.Duration(100 * time.Second) // 编译时直接替换
 const WhoOnline string = "WhoOnline"
 const Rename string = "Rename"
+const PivateChat string = "PivateChat"
 
 func NewUser(conn net.Conn) *User {
 	addr := conn.RemoteAddr().String()
@@ -103,18 +104,20 @@ func (this *User) LMRead(server *Server) {
 			runtime.Goexit()
 		}
 
-		buf_str := string(buf)
+		buf_str := string(buf[:n])
 		if buf_str[0:len(WhoOnline)] == WhoOnline {
 			this.ReplyWhoOnline(server)
 		} else if buf_str[0:len(Rename)] == Rename && len(buf_str) > len(Rename)+1 {
-			name := strings.Replace(buf_str[len(Rename)+1:], "\n", "", -1)
-			this.ReplyRename(name, server)
+			this.ReplyRename(buf_str, server)
+		} else if buf_str[0:len(PivateChat)] == PivateChat && len(buf_str) > len(PivateChat)+1 {
+			this.ReplyPivateChat(buf_str, server)
 		} else {
 			server.BroadCast(this, buf_str[:n-1])
 		}
 	}
 }
 
+// ReplyWhoOnline /*查询在线用户
 func (this *User) ReplyWhoOnline(server *Server) {
 	for _, user := range server.OnlineMap {
 		msg := user.Name
@@ -122,15 +125,31 @@ func (this *User) ReplyWhoOnline(server *Server) {
 	}
 }
 
-func (this *User) ReplyRename(name string, server *Server) {
-	_, ok := server.OnlineMap[name]
+// ReplyRename /*修改用户名
+func (this *User) ReplyRename(buf_str string, server *Server) {
+	buf_str_split := strings.Split(buf_str, "|")
+	new_name := buf_str_split[1]
+	new_name = strings.Replace(new_name, "\n", "", -1)
+	_, ok := server.OnlineMap[new_name]
 	if ok {
 		this.C <- "User name is used"
 	} else {
 		server.mapLock.Lock()
 		delete(server.OnlineMap, this.Name)
-		this.Name = name
-		server.OnlineMap[name] = this
+		this.Name = new_name
+		server.OnlineMap[new_name] = this
 		server.mapLock.Unlock()
 	}
+}
+
+// ReplyPivateChat /*私聊
+// PivateChat|lcs|hello
+func (this *User) ReplyPivateChat(buf_str string, server *Server) {
+	buf_str_split := strings.Split(buf_str, "|")
+	if len(buf_str_split) != 3 {
+		this.C <- "Pivate chat grammatical errors"
+	}
+	name := buf_str_split[1]
+	msg := "[" + name + "]: " + buf_str_split[2]
+	server.OnlineMap[name].C <- msg
 }
