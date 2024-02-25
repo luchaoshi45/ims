@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"sync"
 )
@@ -30,7 +31,7 @@ func NewServer(Ip string, Port int) *Server {
 func (this *Server) Start() {
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", this.Ip, this.Port))
 	if err != nil {
-		fmt.Println("net.Listen err: ", err)
+		log.Println("net.Listen err: ", err)
 		return
 	}
 	defer listener.Close()
@@ -39,7 +40,7 @@ func (this *Server) Start() {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("listener.Accept err: ", err)
+			log.Println("listener.Accept err: ", err)
 			continue
 		}
 		user := NewUser(conn)
