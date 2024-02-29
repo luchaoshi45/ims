@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -54,6 +55,8 @@ func (this *User) Offline(server *Server) {
 	delete(server.OnlineMap, this.Name)
 	server.mapLock.Unlock()
 	server.BroadCast(this, "Offline")
+	this.cancel()
+	this.conn.Close()
 }
 
 // LMWriteUser /*向用户发送消息
@@ -61,7 +64,7 @@ func (this *User) LMWriteUser() {
 	for {
 		select {
 		case massage := <-this.C:
-			this.conn.Write([]byte(massage + "\n"))
+			this.conn.Write([]byte(massage))
 		case <-this.ctx.Done(): // 接收退出信号
 			runtime.Goexit()
 		}
@@ -84,35 +87,42 @@ func (this *User) LMRead(server *Server) {
 		n, err := this.conn.Read(buf)
 
 		if err != nil {
-			//if netErr, ok := err.(net.Error); ok && netErr.Timeout()
 			//Timeout 强制下线
-			if err.(net.Error).Timeout() {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				this.C <- "You hava been forced offline (Timeout)"
 				this.Offline(server)
-				this.cancel()
 				runtime.Goexit()
 			}
 			if err != io.EOF {
 				log.Println("coon Read err ", err)
+				log.Println("server close coon")
+				this.Offline(server)
+				runtime.Goexit()
+			} else {
+				this.Offline(server)
+				runtime.Goexit()
 			}
+
 		}
 
 		//主动下线
 		if n == 0 {
-			this.Offline(server)
-			this.cancel()
-			runtime.Goexit()
+			log.Println("No data read")
+			continue
 		}
 
 		buf_str := string(buf[:n])
-		if buf_str[0:len(WhoOnline)] == WhoOnline {
+		fmt.Println(buf_str)
+
+		cmd := strings.Split(buf_str, "|")[0]
+		if cmd == WhoOnline {
 			this.ReplyWhoOnline(server)
-		} else if buf_str[0:len(Rename)] == Rename && len(buf_str) > len(Rename)+1 {
+		} else if cmd == Rename {
 			this.ReplyRename(buf_str, server)
-		} else if buf_str[0:len(PivateChat)] == PivateChat && len(buf_str) > len(PivateChat)+1 {
+		} else if cmd == PivateChat {
 			this.ReplyPivateChat(buf_str, server)
 		} else {
-			server.BroadCast(this, buf_str[:n-1])
+			server.BroadCast(this, buf_str[:n])
 		}
 	}
 }
@@ -121,7 +131,7 @@ func (this *User) LMRead(server *Server) {
 func (this *User) ReplyWhoOnline(server *Server) {
 	for _, user := range server.OnlineMap {
 		msg := user.Name
-		this.C <- msg
+		this.C <- msg + "|"
 	}
 }
 
@@ -132,13 +142,14 @@ func (this *User) ReplyRename(buf_str string, server *Server) {
 	new_name = strings.Replace(new_name, "\n", "", -1)
 	_, ok := server.OnlineMap[new_name]
 	if ok {
-		this.C <- "User name is used"
+		this.C <- "|User name is used"
 	} else {
 		server.mapLock.Lock()
 		delete(server.OnlineMap, this.Name)
 		this.Name = new_name
 		server.OnlineMap[new_name] = this
 		server.mapLock.Unlock()
+		this.C <- "|Rename ok"
 	}
 }
 
@@ -147,9 +158,14 @@ func (this *User) ReplyRename(buf_str string, server *Server) {
 func (this *User) ReplyPivateChat(buf_str string, server *Server) {
 	buf_str_split := strings.Split(buf_str, "|")
 	if len(buf_str_split) != 3 {
-		this.C <- "Pivate chat grammatical errors"
+		this.C <- "|Pivate chat grammatical errors"
 	}
 	name := buf_str_split[1]
-	msg := "[" + name + "]: " + buf_str_split[2]
-	server.OnlineMap[name].C <- msg
+	msg := buf_str_split[2]
+	if _, ok := server.OnlineMap[name]; ok {
+		server.OnlineMap[name].C <- msg
+		this.C <- "|PivateChat ok"
+	} else {
+		this.C <- "|Pivate chat no user"
+	}
 }
