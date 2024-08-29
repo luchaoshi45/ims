@@ -1,4 +1,4 @@
-package main
+package run
 
 import (
 	"bufio"
@@ -19,7 +19,7 @@ func init() {
 	flag.StringVar(&ServerIp, "ip", "127.0.0.1", "Server IP")
 	flag.IntVar(&ServerPort, "port", 8888, "Server Port")
 }
-func main() {
+func RunClient() {
 	flag.Parse()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	client := NewClient(ServerIp, ServerPort, ctx, cancelFunc)
